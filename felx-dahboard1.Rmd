@@ -32,7 +32,7 @@ iris %>%
   geom_boxplot()
 ```
 
-### fila 2.2
+### Histograma
 ```{r}
 iris %>%
   ggplot(aes(x=Sepal.Width, 
