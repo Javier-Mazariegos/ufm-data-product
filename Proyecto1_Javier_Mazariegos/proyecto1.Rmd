@@ -1,0 +1,664 @@
+---
+title: "Proyecto1"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(tidyr)
+library(dplyr)
+library(wordcloud)
+library(DT)
+library(crosstalk)
+library(usmap)
+library(ggrepel)
+library(leaflet)
+library(lubridate)
+library(tm)
+```
+
+```{r data}
+df <- read_csv("tienda.csv")
+```
+
+
+# Rentabilidad {data-icon=fa-chart-line}
+
+row
+-------------
+
+### Producto más y menos rentable
+```{r}
+#Producto más rentable
+producto_rentable <- df %>%
+                select(`Product Name`, Profit) %>%
+                group_by(`Product Name`) %>%
+                summarise (rentabilidad = sum(Profit)) %>%
+                slice(which.max(rentabilidad))
+
+mayor_rentabilidad <- df %>%
+                      select(`Ship Date`,`Product Name`, Profit) %>%
+                      mutate(`Ship Date`= format(as.Date(`Ship Date`, format="%m/%d/%Y"),"%Y")) %>%
+                      filter(`Product Name` == producto_rentable$`Product Name`) %>%
+                      group_by(`Ship Date`,`Product Name`) %>%
+                      summarise (Rentabilidad = sum(Profit), .groups = 'keep')
+  
+```
+
+```{r}
+#Producto menos rentable
+producto_improductivo <- df %>%
+                select(`Product Name`, Profit) %>%
+                group_by(`Product Name`) %>%
+                summarise (rentabilidad = sum(Profit)) %>%
+                slice(which.min(rentabilidad))
+menor_rentabilidad <- df %>%
+                      select(`Ship Date`,`Product Name`, Profit) %>%
+                      mutate(`Ship Date`= format(as.Date(`Ship Date`, format="%m/%d/%Y"),"%Y")) %>%
+                      filter(`Product Name` == producto_improductivo$`Product Name`)
+                      
+
+```
+
+```{r}
+#Rentabilidad
+rentabilidad <- producto_rentable %>%
+                add_row(producto_improductivo)
+```
+
+```{r}
+#grafica
+ggplot(rentabilidad, aes(x=`Product Name`, y=rentabilidad)) + 
+  geom_bar(stat="identity", aes(fill = `Product Name`)) + 
+  labs(title="Producto más rentable y menos rentable", 
+       subtitle="Desde el año 2014 al 2018") + 
+  theme(axis.text.x = element_text(angle=0))+
+  theme(legend.position = "top")+
+  theme(plot.title = element_text(hjust = 0.5))+ 
+  theme(plot.subtitle = element_text(hjust = 0.5))
+```
+
+### ¿Cúal es el producto más rentable por cada segmento?
+
+```{r}
+#Producto más rentable por Segmento
+mayor_rentabilidad_segmento <- df %>%
+                        select(Segment,`Product Name`, Profit) %>%
+                        group_by(Segment,`Product Name`) %>%
+                        summarise(Ganancias = sum(Profit), .groups = 'keep')%>%
+                        group_by(Segment) %>%
+                        slice(which.max(Ganancias))
+```
+
+```{r}
+#grafica
+
+mayor_rentabilidad_segmento %>%
+  ggplot(aes(x = Segment, Ganancias)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = format(stat(mayor_rentabilidad_segmento$`Product Name`), digits = 0, big.mark = ",",scientific=FALSE)), 
+            vjust = -0.8, 
+            size = 3
+            ) 
+```
+
+### ¿Cúal es el producto menos rentable por cada segmento?
+
+```{r}
+#Producto menos rentable por Segmento
+menor_rentabilidad_segmento <- df %>%
+                        select(Segment,`Product Name`, Profit) %>%
+                        group_by(Segment,`Product Name`) %>%
+                        summarise(Ganancias = sum(Profit), .groups = 'keep')%>%
+                        group_by(Segment) %>%
+                        slice(which.min(Ganancias))
+```
+
+```{r}
+#grafica
+
+menor_rentabilidad_segmento %>%
+  ggplot(aes(x = Segment, Ganancias)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_text(aes(label = format(stat(menor_rentabilidad_segmento$`Product Name`), digits = 0, big.mark = ",",scientific=FALSE)), 
+            vjust = 1.4, 
+            size = 3)
+    
+```
+
+row
+-------------
+
+### ¿Cúal es el producto más y menos rentable por estado?
+
+
+```{r fig.width=20}
+#Producto más rentable por Estado
+mayor_rentabilidad_estado <- df %>%
+                        select(State,`Product Name`, Profit) %>%
+                        group_by(State,`Product Name`) %>%
+                        summarise(Ganancias = sum(Profit), .groups = 'keep')%>%
+                        group_by(State) %>%
+                        slice(which.max(Ganancias))
+
+```
+
+```{r}
+#Producto menos rentable por Estado
+menor_rentabilidad_estado <- df %>%
+                        select(State,`Product Name`, Profit) %>%
+                        group_by(State,`Product Name`) %>%
+                        summarise(Ganancias = sum(Profit), .groups = 'keep')%>%
+                        group_by(State) %>%
+                        slice(which.min(Ganancias))
+```
+
+```{r}
+mayor_menor_rentabilidad_estado <- mayor_rentabilidad_estado %>%
+                                   left_join(menor_rentabilidad_estado,mayor_rentabilidad_estado, by = c("State" = "State"))
+                                   
+```
+
+
+```{r}
+codigo_estados <- read.csv("https://raw.githubusercontent.com/plotly/datasets/master/2011_us_ag_exports.csv")
+codigo_estados <- codigo_estados %>% select(code, state)
+grafica <- left_join(mayor_menor_rentabilidad_estado, codigo_estados, by = c("State" = "state"))
+grafica$`Product Name.x` <- iconv(grafica$`Product Name.x`, to = 'UTF-8')
+grafica$`Product Name.y` <- iconv(grafica$`Product Name.y`, to = 'UTF-8')
+grafica$hover <- with(grafica, paste(State, '<br>', "Producto más rentable: ", `Product Name.x`, 
+                                            '<br>', " Rebtabilidad: ", Ganancias.x,
+                                            '<br>', "Producto menos rentable: ", `Product Name.y`,
+                                            '<br>', " Rebtabilidad: ", Ganancias.y))
+
+fig <- plot_geo(grafica, locationmode = 'USA-states')
+g <- list(
+  scope = 'usa')
+fig <- fig %>% add_trace(
+    z = ~Ganancias.x, text = ~hover, locations = ~code,
+    color = c(~Ganancias.x,~Ganancias.y), colors = 'Purples'
+  )
+fig <- fig %>% layout(
+    title = 'Productos más rentables por estado',
+    geo = g
+  )
+fig
+```
+
+# Segemetación {data-icon='fa-chart-pie'}
+
+Column
+-------------------------------------
+
+row {.tabset }
+-------------
+
+### ¿Cuánto se vende por cada segmento? 
+
+```{r}
+#ventas segmentadas
+ventas_ganancias_segmentadas <- df %>%
+                    select(Segment, Sales, Profit) %>%
+                    group_by(Segment) %>%
+                    summarise (Ventas = sum(Sales),
+                               Ganancias= sum(Profit))
+```
+
+```{r}
+#Grafica en ventas
+ggplot(ventas_ganancias_segmentadas, aes(x=Segment, y= format(Ventas,scientific=FALSE) , label=Segment)) +
+   geom_point(stat='identity', aes(col= format(Ventas,scientific=FALSE) ), size=15)  +
+  geom_text(color="white", size=2) +
+  labs(title="Ventas por segmento", 
+       subtitle="Desde el año 2014 al 2018",
+       y = "Ventas", x = "Segmento",
+       col = "Ventas")+
+  theme(plot.title = element_text(hjust = 0.5))+ 
+  theme(plot.subtitle = element_text(hjust = 0.5))
+```
+
+### ¿Cuál es la utlidad por cada segmento?
+
+```{r}
+ggplot(ventas_ganancias_segmentadas, aes(x=Segment, y= format(Ganancias,scientific=FALSE) , label=Segment)) +
+   geom_point(stat='identity', aes(col= format(Ganancias,scientific=FALSE) ), size=15)  +
+  geom_text(color="white", size=2) +
+  labs(title="Ganancias por segmento", 
+       subtitle="Desde el año 2014 al 2018",
+       y = "Ganancias", x = "Segmento",
+       col = "Ganancias")+
+  theme(plot.title = element_text(hjust = 0.5))+ 
+  theme(plot.subtitle = element_text(hjust = 0.5))
+```
+
+### ¿Cuáles son las subcategorias más vendidas?
+
+```{r}
+#Subcategorias más vendidas
+frecuencia_subcategrias <- df %>%
+                    group_by(`Sub-Category`) %>%
+                    summarise (Frecuencias = sum(Sales), .groups = 'keep')
+
+#Ver link para hacer la grafica
+#https://rpubs.com/arojasmor17/segmentacionretail
+#Esta en: Insights en la descripción de los productos
+#Es el mapa de las nubes de palabras
+```
+
+```{r}
+#Grafica
+set.seed(123) # Reproducibilidad
+wordcloud(frecuencia_subcategrias$`Sub-Category`, frecuencia_subcategrias$Frecuencias,
+          colors = brewer.pal(8, "Dark2"),
+          min.freq = 2, random.order = FALSE, rot.per = 0.20,
+          scale = c(4.0, 0.25))
+```
+
+row
+-------------
+
+### ¿Cuáles son los top 3 productos por cada categoria?
+
+```{r}
+#Top 3 de produtcos con mayor ventas por categoria
+top3_categoria <- df %>%
+                    group_by(Category, `Product Name`) %>%
+                    summarise (Ventas = sum(Sales), .groups = 'keep')%>%
+                    group_by(Category) %>%
+                    top_n(3, Ventas)
+
+#Ver link para hacer la grafica
+#https://rpubs.com/arojasmor17/segmentacionretail
+#Esta en: Productos de interés dentro de cada Cluster
+```
+
+```{r}
+#Grafica
+top3_categoria %>% ggplot(aes(x = `Product Name`, Ventas)) +
+                   geom_bar(stat = "identity", fill = "steelblue") +
+                   geom_text(aes(label = scales::comma(round(Ventas, 0))), 
+                            size = 3, 
+                            color = 'black',
+                            position = position_dodge(0.9), vjust = -0.5) +
+                   scale_y_continuous(labels = scales::comma) +
+                   labs(x = "Productos por categoria", y = "Ventas por peoducto",
+                         title = "Top 3: Ingresos por Producto y Categoria") +
+                   theme(axis.text.x = element_text(angle = 10, hjust = 1)) +
+                   facet_wrap(~Category, scales = 'free_x')
+```
+
+### ¿Qué subcategorias nos están representado más utilidades?
+
+```{r}
+#Qué Subcategorias nos estan dando más ganancias
+subcategrias_ganancias <- df %>%
+                    group_by(`Sub-Category`) %>%
+                    summarise (Ganancias = sum(Profit), .groups = 'keep')
+```
+
+```{r}
+ subcategrias_ganancias %>% ggplot(aes(x = `Sub-Category`, y = Ganancias)) +
+                            geom_bar(stat = "identity", fill = 'steelblue') +
+                            geom_text(aes(label = scales::comma(round(Ganancias, 0))), 
+                                      size = 4, 
+                                      color = 'black',
+                                      position = position_dodge(0.9), vjust = -0.5) +
+                            scale_y_continuous(labels = scales::comma) +
+                            theme(axis.text.x = element_text(angle = 90, hjust = 1))
+                            
+```
+
+Column
+-------------------------------------
+
+### ¿Qué clientes piden más unidades y cuanto representa en ganancias?
+
+```{r}
+#Qué clientes piden más unidades y cuanto representa en ganancias
+ganancias_personas <- df %>%
+                    group_by(`Customer Name`) %>%
+                    summarise (Cantidad = sum(Quantity),
+                               Ganancias = sum(Profit)) %>%
+                    arrange(desc(Cantidad))
+ganancias_personas$`Customer Name` <- iconv(ganancias_personas$`Customer Name`, to = 'UTF-8')
+```
+
+```{r}
+#Grafica
+datatable(ganancias_personas)
+```
+
+
+# Georáfico {data-icon='fa-globe'}
+
+```{r}
+#Ciudad con más ganancias
+ganancias_ciudad <- df %>%
+                        select(State, City, Profit) %>%
+                        group_by(State,City) %>%
+                        summarise(Ganancias = sum(Profit), .groups = 'keep') %>%
+                        group_by(State) %>%
+                        slice(which.max(Ganancias))
+
+```
+
+```{r}
+#Data set con coordenadas por ciudad
+df_city <- usmap_transform(citypop)
+df_city <- df_city %>% select(lon,lat,state)
+colnames(df_city)[3] <- "State"
+```
+
+```{r}
+ganancias_ciudad_coordenadas <- ganancias_ciudad %>%
+                                left_join(df_city,ganancias_ciudad, by = c("State" = "State"))
+ganancias_ciudad_coordenadas <- usmap_transform(ganancias_ciudad_coordenadas)
+```
+
+```{r}
+options(ggrepel.max.overlaps = Inf)
+plot_usmap(fill = "yellow", alpha = 0.25) +
+  ggrepel::geom_label_repel(data = ganancias_ciudad_coordenadas,
+             aes(x = x, y = y, label = City),
+             size = 3, alpha = 0.8,
+             label.r = unit(0.5, "lines"), label.size = 0.5,
+             segment.color = "red", segment.size = 1,
+             seed = 1002) +
+  geom_point(data = ganancias_ciudad_coordenadas,
+             aes(x = x, y = y, size = Ganancias),
+             color = "purple", alpha = 0.5) +
+  scale_size_continuous(range = c(1, 16),
+                        label = scales::comma) +
+  labs(title = "Ciudades en Estados Unidos con más ganancias",
+       subtitle = "Desde el año 2014 al 2018",
+       size = "Ganancias") +
+  theme(legend.position = "right") +
+  theme(plot.title = element_text(hjust = 0.5))+ 
+  theme(plot.subtitle = element_text(hjust = 0.5))
+```
+
+
+
+
+
+```{r}
+#Ciudad con más ventas
+ventas_ciudad <- df %>%
+                        select(State,City, Sales) %>%
+                        group_by(State,City) %>%
+                        summarise(Ventas = sum(Sales), .groups = 'keep') %>%
+                        group_by(State) %>%
+                        slice(which.max(Ventas))
+```
+
+```{r}
+ventas_ciudad_coordenadas <- ventas_ciudad %>%
+                                left_join(df_city,ventas_ciudad, by = c("State" = "State"))
+ventas_ciudad_coordenadas <- usmap_transform(ventas_ciudad_coordenadas)
+```
+
+```{r}
+options(ggrepel.max.overlaps = Inf)
+plot_usmap(fill = "yellow", alpha = 0.25) +
+  ggrepel::geom_label_repel(data = ventas_ciudad_coordenadas,
+             aes(x = x, y = y, label = City),
+             size = 3, alpha = 0.8,
+             label.r = unit(0.5, "lines"), label.size = 0.5,
+             segment.color = "red", segment.size = 1,
+             seed = 1002) +
+  geom_point(data = ventas_ciudad_coordenadas,
+             aes(x = x, y = y, size = Ventas),
+             color = "purple", alpha = 0.5) +
+  scale_size_continuous(range = c(1, 16),
+                        label = scales::comma) +
+  labs(title = "Ciudades en Estados Unidos con más ventas",
+       subtitle = "Desde el año 2014 al 2018",
+       size = "Ventas") +
+  theme(legend.position = "right") +
+  theme(plot.title = element_text(hjust = 0.5))+ 
+  theme(plot.subtitle = element_text(hjust = 0.5))
+```
+
+
+```{r}
+#Producto más vendido por Ciudad
+mayor_ventas_ciudad <- df %>%
+                        select(State,City,`Product Name`, Sales) %>%
+                        group_by(State,City,`Product Name`) %>%
+                        summarise(Ventas = sum(Sales), .groups = 'keep')%>%
+                        group_by(State) %>%
+                        slice(which.max(Ventas))
+```
+
+```{r}
+#Producto menos vendido por Ciudad
+menor_ventas_ciudad <- df %>%
+                        select(State,City,`Product Name`, Sales) %>%
+                        group_by(State,City,`Product Name`) %>%
+                        summarise(Ventas = sum(Sales), .groups = 'keep')%>%
+                        group_by(State) %>%
+                        slice(which.min(Ventas))
+```
+
+```{r}
+mayor_menor_ventas_ciudad <- mayor_ventas_ciudad %>%
+                                   left_join(menor_ventas_ciudad,mayor_menor_ventas_ciudad, by = c("State" = "State"))
+                                   
+```
+
+```{r}
+codigo_estados <- read.csv("https://raw.githubusercontent.com/plotly/datasets/master/2011_us_ag_exports.csv")
+codigo_estados <- codigo_estados %>% select(code, state)
+grafica <- left_join(mayor_menor_ventas_ciudad, codigo_estados, by = c("State" = "state"))
+grafica$`Product Name.x` <- iconv(grafica$`Product Name.x`, to = 'UTF-8')
+grafica$`Product Name.y` <- iconv(grafica$`Product Name.y`, to = 'UTF-8')
+grafica$hover <- with(grafica, paste(State, '<br>', "Ciudad: ", `City.x`, 
+                                            '<br>', "Producto con más ventas: ", `Product Name.x`,
+                                            '<br>', "ventas: ", Ventas.x,
+                                            '<br>', "Ciudad: ", `City.y`, 
+                                            '<br>', "Producto con menos ventas: ", `Product Name.y`,
+                                            '<br>', "ventas: ", Ventas.y))
+
+fig <- plot_geo(grafica, locationmode = 'USA-states')
+g <- list(
+  scope = 'usa')
+fig <- fig %>% add_trace(
+    z = ~Ventas.x, text = ~hover, locations = ~code,
+    color = c(~Ventas.x,~Ventas.y), colors = 'Purples'
+  )
+fig <- fig %>% layout(
+    title = 'Productos más vendidos y menos vendidos por ciudad',
+    geo = g
+  )
+fig
+```
+
+```{r}
+#Producto con más ventas por Estado
+mayor_ventas_estado <- df %>%
+                        select(State,`Product Name`, Sales) %>%
+                        group_by(State,`Product Name`) %>%
+                        summarise(Ventas = sum(Sales), .groups = 'keep')%>%
+                        group_by(State) %>%
+                        slice(which.max(Ventas))
+```
+
+```{r}
+ventas_estado_coordenadas <- mayor_ventas_estado %>%
+                                left_join(df_city,mayor_ventas_estado, by = c("State" = "State"))
+ventas_estado_coordenadas$`Product Name` <- iconv(ventas_estado_coordenadas$`Product Name`, to = 'UTF-8')
+ventas_estado_coordenadas$hover <- with(ventas_estado_coordenadas, paste("Producto con más ventas: ", `Product Name`,
+                                            " ", Ventas))
+```
+
+```{r}
+#grafica
+ventas_estado_coordenadas %>%
+  leaflet() %>% 
+  addTiles() %>% 
+  addMarkers(lng = ~lon,
+             lat = ~lat,
+             label = ~hover)
+```
+
+
+```{r}
+#Producto con menos ventas por Estado
+menor_ventas_estado <- df %>%
+                        select(State,`Product Name`, Sales) %>%
+                        group_by(State,`Product Name`) %>%
+                        summarise(Ventas = sum(Sales), .groups = 'keep')%>%
+                        group_by(State) %>%
+                        slice(which.min(Ventas))
+```
+
+```{r}
+menor_estado_coordenadas <- menor_ventas_estado %>%
+                                left_join(df_city,menor_ventas_estado, by = c("State" = "State"))
+menor_estado_coordenadas$`Product Name` <- iconv(menor_estado_coordenadas$`Product Name`, to = 'UTF-8')
+menor_estado_coordenadas$hover <- with(menor_estado_coordenadas, paste("Producto con menos ventas: ", `Product Name`,
+                                            " ", Ventas))
+```
+
+```{r}
+#grafica
+menor_estado_coordenadas %>%
+  leaflet() %>% 
+  addTiles() %>% 
+  addMarkers(lng = ~lon,
+             lat = ~lat,
+             label = ~hover)
+```
+
+# Entregas {data-icon='fa-bus'}
+
+row
+-------------
+
+### Consumer
+
+```{r}
+#Entregas por segmento
+entregas_segmentadas <- df %>%
+                    count(Segment,name="Entregas")
+```
+
+```{r}
+valueBox(as.double(entregas_segmentadas$Entregas[1]), caption = "Consumer", icon='fa-grin',color="success")
+```
+
+### Corporate
+
+```{r}
+valueBox(as.double(entregas_segmentadas$Entregas[2]), caption = "Corporate", icon='fa-building',color="warning")
+```
+
+### Home office
+
+```{r}
+valueBox(as.double(entregas_segmentadas$Entregas[3]), caption = "Home Office", icon='fa-home',color="danger")
+```
+
+row
+-------------
+
+### Cantidad de entregas
+
+```{r}
+#Cantidad de entregas
+entregas <- df %>% summarise(cantidad_entregas = n())
+valueBox(as.double(entregas), caption = "Total de entregas", icon='fa-truck',color="primary")
+```
+
+### First Class
+
+```{r}
+#Entregas por el tipo de modo de envio
+entregas_modo_envio <- df %>%
+                    count(`Ship Mode`,name="Entregas")
+
+entregas_modo_envio <- entregas_modo_envio %>% mutate(entregas_modo_envio %>% summarise(porcentaje_ventas = (Entregas/9994)*100))
+
+```
+
+```{r}
+first_class <- round(entregas_modo_envio$porcentaje_ventas[1],2)
+gauge(first_class,min=0,max=100, symbol = '%', 
+      gaugeSectors(success=c(80,100), 
+                   warning = c(40,79), 
+                   danger = c(0,39)
+                   )
+      )
+```
+
+### Same Day
+
+```{r}
+Same_day <- round(entregas_modo_envio$porcentaje_ventas[2],2)
+gauge(Same_day,min=0,max=100, symbol = '%', 
+      gaugeSectors(success=c(80,100), 
+                   warning = c(40,79), 
+                   danger = c(0,39)
+                   )
+      )
+```
+
+### Second Class
+
+```{r}
+Second_class <- round(entregas_modo_envio$porcentaje_ventas[3],2)
+gauge(Second_class,min=0,max=100, symbol = '%', 
+      gaugeSectors(success=c(80,100), 
+                   warning = c(40,79), 
+                   danger = c(0,39)
+                   )
+      )
+```
+
+### Standard Class
+
+```{r}
+Standard_class <- round(entregas_modo_envio$porcentaje_ventas[4],2)
+gauge(Standard_class,min=0,max=100, symbol = '%', 
+      gaugeSectors(success=c(80,100), 
+                   warning = c(40,79), 
+                   danger = c(0,39)
+                   )
+      )
+```
+
+row
+-------------
+
+### Cantidad de entregas por año
+
+```{r}
+#Cantidad de entregas por año
+entregas_mes_año <- df %>%
+                    mutate(`Ship Date`=format(as.Date(`Ship Date`, format="%m/%d/%Y"),"%Y")) %>%
+                    count(`Ship Date`, name="Cantidad") %>%
+                    arrange(desc(`Ship Date`))
+```
+
+```{r}
+#Grafica
+ggplot(entregas_mes_año, aes(x=`Ship Date`, y=Cantidad)) + 
+  geom_point(size=3) + 
+  geom_segment(aes(x=`Ship Date`, 
+                   xend=`Ship Date`, 
+                   y=0, 
+                   yend=Cantidad))+ 
+  geom_text(aes(label = Cantidad, digits = 0, big.mark = ","), 
+            vjust = -1, 
+            size = 3) +
+  labs(title="Cantidad de entregas por año")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
