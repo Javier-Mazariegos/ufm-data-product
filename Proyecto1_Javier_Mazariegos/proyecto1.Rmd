@@ -3,7 +3,6 @@ title: "Proyecto1"
 output: 
   flexdashboard::flex_dashboard:
     orientation: rows
-    vertical_layout: fill
 ---
 
 ```{r setup, include=FALSE}
@@ -31,10 +30,11 @@ df <- read_csv("tienda.csv")
 
 # Rentabilidad {data-icon=fa-chart-line}
 
-row
+Row
 -------------
 
 ### Producto más y menos rentable
+
 ```{r}
 #Producto más rentable
 producto_rentable <- df %>%
@@ -133,11 +133,10 @@ menor_rentabilidad_segmento %>%
     
 ```
 
-row
+Row
 -------------
 
 ### ¿Cúal es el producto más y menos rentable por estado?
-
 
 ```{r fig.width=20}
 #Producto más rentable por Estado
@@ -194,10 +193,7 @@ fig
 
 # Segemetación {data-icon='fa-chart-pie'}
 
-Column
--------------------------------------
-
-row {.tabset }
+row
 -------------
 
 ### ¿Cuánto se vende por cada segmento? 
@@ -261,7 +257,7 @@ wordcloud(frecuencia_subcategrias$`Sub-Category`, frecuencia_subcategrias$Frecue
           scale = c(4.0, 0.25))
 ```
 
-row
+row {.tabset }
 -------------
 
 ### ¿Cuáles son los top 3 productos por cada categoria?
@@ -315,9 +311,6 @@ subcategrias_ganancias <- df %>%
                             
 ```
 
-Column
--------------------------------------
-
 ### ¿Qué clientes piden más unidades y cuanto representa en ganancias?
 
 ```{r}
@@ -335,8 +328,96 @@ ganancias_personas$`Customer Name` <- iconv(ganancias_personas$`Customer Name`, 
 datatable(ganancias_personas)
 ```
 
-
 # Georáfico {data-icon='fa-globe'}
+
+```{r}
+#Data set con coordenadas por ciudad
+df_city <- usmap_transform(citypop)
+df_city <- df_city %>% select(lon,lat,state)
+colnames(df_city)[3] <- "State"
+```
+
+```{r}
+#Producto con más ventas por Estado
+mayor_ventas_estado <- df %>%
+                        select(State,`Product Name`, Sales) %>%
+                        group_by(State,`Product Name`) %>%
+                        summarise(Ventas = sum(Sales), .groups = 'keep')%>%
+                        group_by(State) %>%
+                        slice(which.max(Ventas))
+```
+
+```{r}
+ventas_estado_coordenadas <- mayor_ventas_estado %>%
+                                left_join(df_city,mayor_ventas_estado, by = c("State" = "State"))
+ventas_estado_coordenadas$`Product Name` <- iconv(ventas_estado_coordenadas$`Product Name`, to = 'UTF-8')
+ventas_estado_coordenadas$hover <- with(ventas_estado_coordenadas, paste("Producto con más ventas: ", `Product Name`,
+                                            " ", Ventas))
+```
+
+row {.tabset }
+-------------
+
+### ¿Cuáles son los productos con más ventas por estado
+
+```{r}
+data_ventas <- SharedData$new(ventas_estado_coordenadas)
+filter_slider("Ventas","Ventas",data_ventas,
+              step=0.1,width=250, 
+              column= ~Ventas)
+```
+
+```{r}
+#grafica
+data_ventas %>%
+  leaflet() %>% 
+  addTiles() %>% 
+  addMarkers(lng = ~lon,
+             lat = ~lat,
+             label = ~hover)
+```
+
+### ¿Cuáles son los productos con menos ventas por estado?
+
+```{r}
+#Producto con menos ventas por Estado
+menor_ventas_estado <- df %>%
+                        select(State,`Product Name`, Sales) %>%
+                        group_by(State,`Product Name`) %>%
+                        summarise(Ventas = sum(Sales), .groups = 'keep')%>%
+                        group_by(State) %>%
+                        slice(which.min(Ventas))
+```
+
+```{r}
+menor_estado_coordenadas <- menor_ventas_estado %>%
+                                left_join(df_city,menor_ventas_estado, by = c("State" = "State"))
+menor_estado_coordenadas$`Product Name` <- iconv(menor_estado_coordenadas$`Product Name`, to = 'UTF-8')
+menor_estado_coordenadas$hover <- with(menor_estado_coordenadas, paste("Producto con menos ventas: ", `Product Name`,
+                                            " ", Ventas))
+```
+
+```{r}
+data_menos_ventas <- SharedData$new(menor_estado_coordenadas)
+filter_slider("Ventas","Ventas",data_menos_ventas,
+              step=0.1,width=250, 
+              column= ~Ventas)
+```
+
+```{r}
+#grafica
+data_menos_ventas %>%
+  leaflet() %>% 
+  addTiles() %>% 
+  addMarkers(lng = ~lon,
+             lat = ~lat,
+             label = ~hover)
+```
+
+row {.tabset }
+-------------
+
+### ¿Cuáles son las ciudades que más ganancias tienen?
 
 ```{r}
 #Ciudad con más ganancias
@@ -347,13 +428,6 @@ ganancias_ciudad <- df %>%
                         group_by(State) %>%
                         slice(which.max(Ganancias))
 
-```
-
-```{r}
-#Data set con coordenadas por ciudad
-df_city <- usmap_transform(citypop)
-df_city <- df_city %>% select(lon,lat,state)
-colnames(df_city)[3] <- "State"
 ```
 
 ```{r}
@@ -384,9 +458,7 @@ plot_usmap(fill = "yellow", alpha = 0.25) +
   theme(plot.subtitle = element_text(hjust = 0.5))
 ```
 
-
-
-
+### ¿Cuáles son las ciudades que más ventas tienen?
 
 ```{r}
 #Ciudad con más ventas
@@ -426,6 +498,7 @@ plot_usmap(fill = "yellow", alpha = 0.25) +
   theme(plot.subtitle = element_text(hjust = 0.5))
 ```
 
+### ¿Cuáles son productos más vendidos y menos vendidos por ciudad?
 
 ```{r}
 #Producto más vendido por Ciudad
@@ -478,63 +551,6 @@ fig <- fig %>% layout(
     geo = g
   )
 fig
-```
-
-```{r}
-#Producto con más ventas por Estado
-mayor_ventas_estado <- df %>%
-                        select(State,`Product Name`, Sales) %>%
-                        group_by(State,`Product Name`) %>%
-                        summarise(Ventas = sum(Sales), .groups = 'keep')%>%
-                        group_by(State) %>%
-                        slice(which.max(Ventas))
-```
-
-```{r}
-ventas_estado_coordenadas <- mayor_ventas_estado %>%
-                                left_join(df_city,mayor_ventas_estado, by = c("State" = "State"))
-ventas_estado_coordenadas$`Product Name` <- iconv(ventas_estado_coordenadas$`Product Name`, to = 'UTF-8')
-ventas_estado_coordenadas$hover <- with(ventas_estado_coordenadas, paste("Producto con más ventas: ", `Product Name`,
-                                            " ", Ventas))
-```
-
-```{r}
-#grafica
-ventas_estado_coordenadas %>%
-  leaflet() %>% 
-  addTiles() %>% 
-  addMarkers(lng = ~lon,
-             lat = ~lat,
-             label = ~hover)
-```
-
-
-```{r}
-#Producto con menos ventas por Estado
-menor_ventas_estado <- df %>%
-                        select(State,`Product Name`, Sales) %>%
-                        group_by(State,`Product Name`) %>%
-                        summarise(Ventas = sum(Sales), .groups = 'keep')%>%
-                        group_by(State) %>%
-                        slice(which.min(Ventas))
-```
-
-```{r}
-menor_estado_coordenadas <- menor_ventas_estado %>%
-                                left_join(df_city,menor_ventas_estado, by = c("State" = "State"))
-menor_estado_coordenadas$`Product Name` <- iconv(menor_estado_coordenadas$`Product Name`, to = 'UTF-8')
-menor_estado_coordenadas$hover <- with(menor_estado_coordenadas, paste("Producto con menos ventas: ", `Product Name`,
-                                            " ", Ventas))
-```
-
-```{r}
-#grafica
-menor_estado_coordenadas %>%
-  leaflet() %>% 
-  addTiles() %>% 
-  addMarkers(lng = ~lon,
-             lat = ~lat,
-             label = ~hover)
 ```
 
 # Entregas {data-icon='fa-bus'}
